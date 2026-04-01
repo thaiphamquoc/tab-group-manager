@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Group Manager",
+  "version": "1.1.0",
+  "description": "Categorize and search your Chrome tab groups — including closed ones",
+  "permissions": ["tabGroups", "tabs", "storage"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  }
+}

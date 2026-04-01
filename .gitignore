@@ -1,0 +1,17 @@
+node_modules
+dist
+.DS_Store
+server/public
+vite.config.ts.*
+*.tar.gz
+~
+.env
+.local/
+.replit
+.idea
+
+# Kubernetes deployment - exclude actual environment configs
+deployment/**/ethos-values.yaml
+
+# Environment configuration files (contains credentials)
+conf/
