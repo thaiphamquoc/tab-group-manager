@@ -1,12 +1,6 @@
-# Chrome Extensions
+# Tab Group Manager
 
-A collection of Chrome extensions built with vanilla JavaScript and Manifest V3.
-
-## Extensions
-
-### Tab Group Manager
-
-> Categorize and search your Chrome tab groups — including closed ones.
+> A Chrome extension to categorize and search your tab groups — including closed ones.
 
 **Features:**
 - View all active and archived tab groups in one place
@@ -25,7 +19,7 @@ No build step required.
 1. Clone this repo
 2. Open Chrome and go to `chrome://extensions/`
 3. Enable **Developer mode** (toggle in the top right)
-4. Click **Load unpacked** and select the extension folder (e.g. `tab-group-manager/`)
+4. Click **Load unpacked** and select this folder
 
 ## License
 

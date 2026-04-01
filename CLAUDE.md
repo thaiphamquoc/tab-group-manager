@@ -37,19 +37,20 @@ rsvg-convert -w 128 tab-group-manager/icons/icon128.svg -o tab-group-manager/ico
 
 ### Storage Schema
 
-All data lives in `chrome.storage.local`:
+All data lives under a single `chrome.storage.local` key: `tgm_groups` (an object). Keys within that object:
 
 - `active_${groupId}` — active tab groups (Chrome-assigned ID)
 - `arch_${groupId}_${timestamp}` — archived groups (closed groups are archived automatically, not deleted)
 
-Each entry stores a group snapshot (title, color, tabs) plus user metadata (category, notes).
+Each entry is a group snapshot: `{ key, title, color, status, activeId, windowId, tabs[], updatedAt, meta: { category, notes } }`. Archived entries also have `archivedAt`.
 
 ### Key Behaviors
 
-- **Auto-archive on close**: when a tab group is removed, `background.js` moves it from `active_*` to `arch_*` storage.
+- **Auto-archive on close**: when a tab group is removed, `background.js` moves it from `active_*` to `arch_*` storage. Duplicate-title archived entries are updated in place (not duplicated).
 - **Metadata inheritance**: if a closed group is reopened with the same title, it inherits the archived group's category/notes.
-- **Client-side search**: `popup.js` filters across group titles, categories, notes, and tab titles/URLs in real time.
-- **Keyboard navigation**: arrow keys navigate search results; Enter activates the selected group.
+- **Client-side search**: `popup.js` filters across group titles, categories, notes, and tab titles/URLs in real time. Tab list is shown inline only when a search is active.
+- **Keyboard navigation**: arrow keys navigate search results; Enter activates the selected group (or the only result if none selected).
+- **Category manager**: rename or delete categories across all groups in bulk (pencil/trash icons in the category manager modal, opened via "Manage" button).
 
 ### Permissions
 
