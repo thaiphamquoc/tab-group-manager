@@ -276,9 +276,11 @@ function groupCard(group) {
 
   if (group.status === "active") {
     actions.appendChild(iconBtn(editIcon(), "Edit category & notes", () => openModal(group)));
+    actions.appendChild(iconBtn(bookmarkIcon(), "Bookmark all tabs", () => bookmarkGroup(group)));
     actions.appendChild(iconBtn(focusIcon(), "Focus this group", () => focusGroup(group.activeId)));
   } else {
     actions.appendChild(iconBtn(editIcon(), "Edit category & notes", () => openModal(group)));
+    actions.appendChild(iconBtn(bookmarkIcon(), "Bookmark all tabs", () => bookmarkGroup(group)));
     actions.appendChild(iconBtn(restoreIcon(), "Restore group", () => restoreGroup(group)));
     actions.appendChild(iconBtn(trashIcon(), "Delete from history", () => {
       if (confirm(`Delete "${group.title || "Unnamed"}" from history?`)) {
@@ -326,6 +328,55 @@ function tabList(tabs) {
     ul.appendChild(li);
   }
   return ul;
+}
+
+// ── Bookmark group ─────────────────────────────────────────────────────────
+
+async function bookmarkGroup(group) {
+  const groupTitle = group.title || "Unnamed group";
+
+  // Get tabs to bookmark: live for active groups, stored for archived
+  let tabs;
+  if (group.status === "active") {
+    const liveTabs = await chrome.tabs.query({ groupId: group.activeId });
+    tabs = liveTabs.map((t) => ({ title: t.title, url: t.url }));
+  } else {
+    tabs = group.tabs;
+  }
+
+  if (!tabs || tabs.length === 0) {
+    alert("No tabs to bookmark.");
+    return;
+  }
+
+  // Find or create the top-level `tgm` folder in the bookmark bar (id "1")
+  const barChildren = await chrome.bookmarks.getChildren("1");
+  let tgmFolder = barChildren.find((n) => !n.url && n.title === "tgm");
+  if (!tgmFolder) {
+    tgmFolder = await chrome.bookmarks.create({ parentId: "1", title: "tgm" });
+  }
+
+  // Find or create the group subfolder inside `tgm`
+  const tgmChildren = await chrome.bookmarks.getChildren(tgmFolder.id);
+  let groupFolder = tgmChildren.find((n) => !n.url && n.title === groupTitle);
+  if (!groupFolder) {
+    groupFolder = await chrome.bookmarks.create({ parentId: tgmFolder.id, title: groupTitle });
+  }
+
+  // Bookmark each tab (skip chrome:// and empty URLs)
+  const existing = await chrome.bookmarks.getChildren(groupFolder.id);
+  const existingUrls = new Set(existing.map((b) => b.url));
+  let added = 0;
+  for (const tab of tabs) {
+    if (!tab.url || tab.url.startsWith("chrome://") || existingUrls.has(tab.url)) continue;
+    await chrome.bookmarks.create({ parentId: groupFolder.id, title: tab.title || tab.url, url: tab.url });
+    added++;
+  }
+
+  const msg = added === 0
+    ? `All tabs already bookmarked in "tgm / ${groupTitle}".`
+    : `Bookmarked ${added} tab${added !== 1 ? "s" : ""} to "tgm / ${groupTitle}".`;
+  alert(msg);
 }
 
 // ── Focus active group ─────────────────────────────────────────────────────
@@ -398,11 +449,12 @@ function makeSvg(paths) {
   return svg;
 }
 
-const editIcon    = () => makeSvg(`<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>`);
-const pencilIcon  = () => makeSvg(`<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>`);
-const focusIcon   = () => makeSvg(`<polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>`);
-const restoreIcon = () => makeSvg(`<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.7L1 10"/>`);
-const trashIcon   = () => makeSvg(`<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>`);
+const editIcon     = () => makeSvg(`<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>`);
+const pencilIcon   = () => makeSvg(`<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>`);
+const focusIcon    = () => makeSvg(`<polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>`);
+const restoreIcon  = () => makeSvg(`<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.7L1 10"/>`);
+const trashIcon    = () => makeSvg(`<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>`);
+const bookmarkIcon = () => makeSvg(`<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>`);
 
 // ── Search & filter events ─────────────────────────────────────────────────
 
