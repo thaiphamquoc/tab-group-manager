@@ -461,6 +461,62 @@ document.getElementById("modal").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.target.id !== "notes-input") saveModal();
 });
 
+// ── Export / Import ────────────────────────────────────────────────────────
+
+async function exportGroups() {
+  const r = await chrome.storage.local.get(GROUPS_KEY);
+  const stored = r[GROUPS_KEY] || {};
+  const payload = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    groups: stored,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `tab-groups-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function importGroups(file) {
+  let payload;
+  try {
+    payload = JSON.parse(await file.text());
+  } catch {
+    alert("Invalid file: could not parse JSON.");
+    return;
+  }
+
+  const incoming = payload.groups || payload;
+  if (typeof incoming !== "object" || Array.isArray(incoming)) {
+    alert("Invalid export file format.");
+    return;
+  }
+
+  const r = await chrome.storage.local.get(GROUPS_KEY);
+  const stored = r[GROUPS_KEY] || {};
+
+  let added = 0, skipped = 0;
+  for (const [key, value] of Object.entries(incoming)) {
+    if (stored[key]) {
+      skipped++;
+    } else {
+      stored[key] = value;
+      added++;
+    }
+  }
+
+  await chrome.storage.local.set({ [GROUPS_KEY]: stored });
+  await loadData();
+
+  const msg = added === 0
+    ? `No new groups imported (${skipped} already exist).`
+    : `Imported ${added} group${added !== 1 ? "s" : ""}${skipped > 0 ? `, ${skipped} skipped (already exist)` : ""}.`;
+  alert(msg);
+}
+
 // ── Category manager ───────────────────────────────────────────────────────
 
 function openCategoryManager() {
@@ -557,6 +613,15 @@ async function bulkUpdateCategory(oldCat, newCat) {
     if (g.meta.category === oldCat) g.meta.category = newCat;
   }
 }
+
+document.getElementById("export-btn").addEventListener("click", exportGroups);
+document.getElementById("import-btn").addEventListener("click", () => {
+  document.getElementById("import-file").value = "";
+  document.getElementById("import-file").click();
+});
+document.getElementById("import-file").addEventListener("change", (e) => {
+  if (e.target.files[0]) importGroups(e.target.files[0]);
+});
 
 document.getElementById("manage-categories-btn").addEventListener("click", openCategoryManager);
 document.getElementById("cat-modal-close").addEventListener("click", closeCategoryManager);

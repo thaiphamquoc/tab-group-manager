@@ -95,6 +95,12 @@ header h1 {
 .clear-btn.visible { display: block; }
 
 /* ── Header icon button ── */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 header .icon-btn {
   padding: 5px;
   border-radius: 6px;
