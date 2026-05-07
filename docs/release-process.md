@@ -16,9 +16,9 @@ In `manifest.json`, increment `version` following semver:
 ## 2. Update icons (if changed)
 
 ```bash
-sips -z 128 128 source-icon.png --out icons/icon128.png
-sips -z 48  48  source-icon.png --out icons/icon48.png
-sips -z 16  16  source-icon.png --out icons/icon16.png
+sips -z 128 128 source-icon.png --out images/icons/icon128.png
+sips -z 48  48  source-icon.png --out images/icons/icon48.png
+sips -z 16  16  source-icon.png --out images/icons/icon16.png
 ```
 
 ## 3. Update screenshots (if UI changed)
@@ -51,8 +51,7 @@ zip -r tab-group-manager.zip tab-group-manager/ \
   --exclude "tab-group-manager/generate-icons.js" \
   --exclude "tab-group-manager/README.md" \
   --exclude "tab-group-manager/docs/*" \
-  --exclude "tab-group-manager/tgm-screenshot.png" \
-  --exclude "tab-group-manager/screenshot-1280x800.png"
+  --exclude "tab-group-manager/images/screenshots/store-screenshot-1.png"
 ```
 
 ## 5. Publish to Chrome Web Store
