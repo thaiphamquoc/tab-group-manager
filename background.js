@@ -33,18 +33,26 @@ async function syncGroup(groupId) {
   const groups = await getGroups();
   const key = activeKey(groupId);
 
-  // If this is a brand-new active entry, check whether an archived entry with
-  // the same title already exists (the user reopened a previously closed group
-  // natively). Carry over its meta so categories/notes aren't lost.
-  let inheritedMeta = groups[key]?.meta;
-  if (!inheritedMeta) {
-    const title = group.title || "";
+  // If an archived entry with the same title still exists, the user just
+  // reopened a previously closed group (either natively or via this extension).
+  // Inherit its meta and drop the stale archived snapshot so we don't show
+  // duplicate entries (an archived stub plus the live active group).
+  //
+  // We can't gate this on "no existing meta" because the first onCreated event
+  // fires before the title is set, leaving an empty-but-truthy meta object on
+  // the active entry — that would otherwise prevent the cleanup on the
+  // following onUpdated event when the title finally becomes available.
+  const existingEntry = groups[key];
+  let inheritedMeta = existingEntry?.meta;
+  const hasMeaningfulMeta = !!(inheritedMeta && (inheritedMeta.category || inheritedMeta.notes));
+  const title = group.title || "";
+
+  if (!hasMeaningfulMeta && title) {
     const archivedMatch = Object.values(groups).find(
       (g) => g.status === "archived" && g.title === title
     );
     if (archivedMatch) {
       inheritedMeta = archivedMatch.meta;
-      // Remove the stale archived entry — this active group replaces it.
       delete groups[archivedMatch.key];
     }
   }

@@ -1,4 +1,5 @@
 const GROUPS_KEY = "tgm_groups";
+const RESTORE_WARNING_DISMISSED_KEY = "tgm_restore_warning_dismissed";
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -15,8 +16,14 @@ async function loadData() {
   const r = await chrome.storage.local.get(GROUPS_KEY);
   const stored = r[GROUPS_KEY] || {};
 
-  // Get live tab counts for active groups
-  const tabs = await chrome.tabs.query({});
+  // Fetch live Chrome state in parallel
+  const [tabs, liveGroups] = await Promise.all([
+    chrome.tabs.query({}),
+    chrome.tabGroups.query({}),
+  ]);
+
+  const liveGroupIds = new Set(liveGroups.map(g => g.id));
+
   const tabCounts = {};
   tabs.forEach((t) => {
     if (t.groupId && t.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE) {
@@ -25,13 +32,19 @@ async function loadData() {
   });
 
   allGroups = Object.values(stored)
-    .map((g) => ({
-      ...g,
-      meta: g.meta || { category: "", notes: "" },
-      tabCount: g.status === "active" ? (tabCounts[g.activeId] || g.tabs.length) : g.tabs.length,
-    }))
+    .map((g) => {
+      // Stored "active" entries whose group no longer exists in Chrome are stale — treat as archived
+      const effectiveStatus = (g.status === "active" && !liveGroupIds.has(g.activeId))
+        ? "archived"
+        : g.status;
+      return {
+        ...g,
+        status: effectiveStatus,
+        meta: g.meta || { category: "", notes: "" },
+        tabCount: effectiveStatus === "active" ? (tabCounts[g.activeId] || g.tabs.length) : g.tabs.length,
+      };
+    })
     .sort((a, b) => {
-      // Active first, then by most recently updated
       if (a.status !== b.status) return a.status === "active" ? -1 : 1;
       return (b.updatedAt || 0) - (a.updatedAt || 0);
     });
@@ -65,17 +78,119 @@ async function deleteGroup(key) {
 
 // ── Restore archived group ─────────────────────────────────────────────────
 
+let _restoring = false; // guard against concurrent restore calls (e.g. double-click)
+
+async function focusLiveGroup(liveGroup) {
+  await chrome.tabGroups.update(liveGroup.id, { collapsed: false });
+  const groupTabs = await chrome.tabs.query({ groupId: liveGroup.id });
+  if (groupTabs.length > 0) await chrome.tabs.update(groupTabs[0].id, { active: true });
+  await chrome.windows.update(liveGroup.windowId, { focused: true });
+  window.close();
+}
+
 async function restoreGroup(group) {
+  if (_restoring) return;
+  _restoring = true;
+  try {
+    const proceed = await confirmRestore(group);
+    if (!proceed) return;
+    await _doRestore(group);
+  } finally {
+    _restoring = false;
+  }
+}
+
+// Warn the user that restoring may produce a duplicate when Chrome's
+// "Save tab groups" feature keeps the closed group as a pill in the tab strip.
+// The Chrome extension API does not expose saved-but-closed groups, so we
+// can't detect that state — we ask the user instead. The warning can be
+// dismissed permanently via the checkbox.
+async function confirmRestore(group) {
+  // For active groups (not archived), no new tab group will be created — skip warning.
+  if (group.status === "active") return true;
+
+  const r = await chrome.storage.local.get(RESTORE_WARNING_DISMISSED_KEY);
+  if (r[RESTORE_WARNING_DISMISSED_KEY]) return true;
+
+  return new Promise((resolve) => {
+    const modal       = document.getElementById("restore-modal");
+    const titleEl     = document.getElementById("restore-modal-title");
+    const dismissCb   = document.getElementById("restore-modal-dismiss");
+    const cancelBtn   = document.getElementById("restore-modal-cancel");
+    const confirmBtn  = document.getElementById("restore-modal-confirm");
+    const backdrop    = document.getElementById("restore-modal-backdrop");
+
+    titleEl.textContent = group.title || "(Unnamed group)";
+    dismissCb.checked = false;
+    modal.classList.remove("hidden");
+    confirmBtn.focus();
+
+    const cleanup = () => {
+      modal.classList.add("hidden");
+      cancelBtn.removeEventListener("click", onCancel);
+      confirmBtn.removeEventListener("click", onConfirm);
+      backdrop.removeEventListener("click", onCancel);
+      document.removeEventListener("keydown", onKey);
+    };
+
+    const onCancel = () => { cleanup(); resolve(false); };
+    const onConfirm = async () => {
+      if (dismissCb.checked) {
+        await chrome.storage.local.set({ [RESTORE_WARNING_DISMISSED_KEY]: true });
+      }
+      cleanup();
+      resolve(true);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") onCancel();
+      else if (e.key === "Enter") onConfirm();
+    };
+
+    cancelBtn.addEventListener("click", onCancel);
+    confirmBtn.addEventListener("click", onConfirm);
+    backdrop.addEventListener("click", onCancel);
+    document.addEventListener("keydown", onKey);
+  });
+}
+
+// Remove the archived entry from storage now that it has been restored.
+// This prevents the popup from showing both an archived stub and the new
+// active entry for the same group.
+async function deleteArchivedEntry(key) {
+  if (!key || !key.startsWith("arch_")) return;
+  const r = await chrome.storage.local.get(GROUPS_KEY);
+  const stored = r[GROUPS_KEY] || {};
+  if (stored[key]) {
+    delete stored[key];
+    await chrome.storage.local.set({ [GROUPS_KEY]: stored });
+  }
+}
+
+async function _doRestore(group) {
   if (!group.tabs || group.tabs.length === 0) {
     alert("No tabs recorded for this group.");
     return;
+  }
+
+  // Early check: if a Chrome group with this title is already open, just focus it.
+  if (group.title) {
+    const liveGroups = await chrome.tabGroups.query({});
+    const earlyMatch = liveGroups.find(g => g.title === group.title);
+    if (earlyMatch) {
+      await deleteArchivedEntry(group.key);
+      await focusLiveGroup(earlyMatch);
+      return;
+    }
   }
 
   // getCurrent() returns the popup window — use getLastFocused to get the
   // actual browser window where tabs should be restored.
   const win = await chrome.windows.getLastFocused({ windowTypes: ["normal"] });
 
-  // Create all tabs in the target window (inactive so they don't flash one by one)
+  // Create all tabs in the target window (inactive so they don't flash one by one).
+  // Tab creation is slow (multiple round-trips), so we do a final duplicate check
+  // right before grouping — another group with the same name could appear during
+  // the loop (race with session restore, another window, etc.).
   const tabIds = [];
   for (const tabInfo of group.tabs) {
     const tab = await chrome.tabs.create({
@@ -84,6 +199,19 @@ async function restoreGroup(group) {
       active: false,
     });
     tabIds.push(tab.id);
+  }
+
+  // Final check right before creating the Chrome group.
+  if (group.title) {
+    const liveGroups = await chrome.tabGroups.query({});
+    const lateMatch = liveGroups.find(g => g.title === group.title);
+    if (lateMatch) {
+      // Clean up the tabs we just created and focus the existing group instead.
+      await Promise.all(tabIds.map(id => chrome.tabs.remove(id)));
+      await deleteArchivedEntry(group.key);
+      await focusLiveGroup(lateMatch);
+      return;
+    }
   }
 
   // Group the tabs — don't pass windowId here, tabs already belong to win.id
@@ -101,6 +229,10 @@ async function restoreGroup(group) {
   // Activate the first tab — this makes the group visible and focused
   await chrome.tabs.update(tabIds[0], { active: true });
   await chrome.windows.update(win.id, { focused: true });
+
+  // The archived entry has now been replaced by a live active group; remove
+  // the stale archived snapshot so the popup doesn't show both.
+  await deleteArchivedEntry(group.key);
 
   window.close();
 }

@@ -99,6 +99,34 @@
     </div>
   </div>
 
+  <!-- Restore warning modal (saved-tab-groups duplication) -->
+  <div id="restore-modal" class="modal hidden">
+    <div class="modal-backdrop" id="restore-modal-backdrop"></div>
+    <div class="modal-box">
+      <h2>Restore tab group?</h2>
+      <p class="restore-modal-text">
+        This will create a new tab group named
+        <strong id="restore-modal-title"></strong> in Chrome.
+      </p>
+      <p class="restore-modal-text restore-modal-warning">
+        If you use Chrome's <em>Save tab groups</em> feature and a saved version of
+        this group is still pinned in your tab strip, restoring here will produce a
+        duplicate. To avoid that, click the saved group's pill in Chrome's tab strip
+        instead.
+      </p>
+
+      <label class="restore-modal-check">
+        <input type="checkbox" id="restore-modal-dismiss" />
+        <span>Don't show this warning again</span>
+      </label>
+
+      <div class="modal-actions">
+        <button id="restore-modal-cancel" class="btn-secondary">Cancel</button>
+        <button id="restore-modal-confirm" class="btn-primary">Restore</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Rename category modal -->
   <div id="rename-modal" class="modal hidden">
     <div class="modal-backdrop" id="rename-modal-backdrop"></div>
