@@ -12,6 +12,27 @@
 
 **Permissions used:** `tabGroups`, `tabs`, `storage` — no network access, all data stays local.
 
+## Known limitation: Chrome's "Save tab groups" feature
+
+Chrome has a built-in **Save tab groups** feature that keeps closed groups as
+collapsed pills in the tab strip so you can click them to reopen. These
+saved-but-closed groups are **not exposed to the Chrome extension API**, so
+this extension cannot detect them.
+
+If you restore an archived group from the extension while a saved pill for
+the same group still exists in Chrome's tab strip, Chrome will end up with
+**two pills with the same name** — the saved one and a new one created by
+the extension.
+
+**To avoid duplicates:**
+- If a saved pill for the group is still in your tab strip, click that pill
+  in Chrome directly instead of using the extension's restore button.
+- Use the extension's restore only for groups that are no longer pinned in
+  Chrome's tab strip.
+
+The extension shows a one-time warning before restoring to remind you of
+this. You can dismiss it permanently with the "Don't show again" checkbox.
+
 ## Installation
 
 No build step required.
